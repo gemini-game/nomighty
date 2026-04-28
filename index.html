@@ -1,1 +1,409 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>운명전쟁39 시뮬레이터</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;700;900&display=swap');
+        body { 
+            font-family: 'Pretendard', sans-serif; 
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); 
+            color: #1e293b; 
+            overflow: hidden; 
+            height: 100vh;
+            width: 100vw;
+        }
+        
+        .table-area {
+            position: relative;
+            width: 100%;
+            height: calc(100vh - 160px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
 
+        .player-seat {
+            position: absolute;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.3s ease;
+            z-index: 10;
+        }
+        .seat-1 { top: 20%; left: 5%; }
+        .seat-2 { top: 5%; left: 30%; }
+        .seat-3 { top: 5%; right: 30%; }
+        .seat-4 { top: 20%; right: 5%; }
+
+        .stat-v-panel {
+            display: flex;
+            flex-direction: column;
+            width: 54px;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 2px solid #cbd5e1;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            background: white;
+            flex-shrink: 0;
+        }
+        .stat-score {
+            height: 32px;
+            background: #1e293b;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            font-weight: 900;
+        }
+        .stat-win {
+            height: 28px;
+            background: #f1f5f9;
+            color: #3b82f6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 800;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .char-node {
+            width: 80px;
+            height: 80px;
+            background: #ffffff;
+            border-radius: 20px;
+            border: 4px solid #cbd5e1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            transition: all 0.2s ease;
+        }
+        .char-node span {
+            font-size: 14px;
+            font-weight: 900;
+            color: #475569;
+        }
+
+        .status-turn .char-node { border-color: #facc15; box-shadow: 0 0 20px rgba(250, 204, 21, 0.5); transform: scale(1.05); }
+        .status-played .char-node { border-color: #4ade80; box-shadow: 0 0 15px rgba(74, 222, 128, 0.3); }
+
+        .card { 
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
+            cursor: pointer; 
+            user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            border-radius: 14px;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+        }
+        .c-hand { width: 64px; height: 90px; font-size: 22px; border: 2px solid transparent; }
+        .c-field { width: 90px; height: 130px; font-size: 40px; border: 4px solid transparent; }
+
+        .c-num { background: #ffffff; border-color: #3b82f6; color: #1e3a8a; }
+        .c-death { background: #991b1b; border-color: #f43f5e; color: white; }
+        .c-zero { background: #475569; border-color: #94a3b8; color: white; }
+        .c-rev { background: #4f46e5; border-color: #c7d2fe; color: white; }
+
+        .card.disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(0.5); }
+
+        /* 사용자 대시보드 (고정 위치 및 너비) */
+        .user-dashboard {
+            position: fixed;
+            bottom: 25px;
+            left: 25px;
+            width: 180px; /* 고정 너비 설정 */
+            background: white;
+            border: 3px solid #1e293b;
+            border-radius: 20px;
+            padding: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            z-index: 100;
+        }
+
+        #bid-panel {
+            background: white;
+            border: 4px solid #1e293b;
+            box-shadow: 0 40px 80px rgba(0,0,0,0.3);
+        }
+
+        .bf-standard { background-color: rgba(255, 255, 255, 0.4); border-color: rgba(203, 213, 225, 0.5); }
+        .bf-reverse { background-color: rgba(236, 252, 203, 0.6); border-color: rgba(129, 140, 248, 0.8); }
+
+        /* 핸드 영역: 배너 우측 여백 확보 */
+        .hand-area {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 130px;
+            background: white;
+            border-top: 1px solid #f1f5f9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding-left: 210px; /* 배너 너비 + 간격만큼 여백 */
+            z-index: 50;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center">
+
+    <div class="w-full h-14 bg-white/90 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 z-[100]">
+        <div class="flex items-center gap-6">
+            <span class="text-slate-900 font-black text-xl tracking-tighter italic">DESTINY WAR 39</span>
+            <div class="h-6 w-[1px] bg-slate-200"></div>
+            <span id="cur-round" class="text-sm font-black text-blue-600">ROUND 1 / 9</span>
+        </div>
+        
+        <div class="flex items-center gap-12">
+            <div id="rev-indicator" class="text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full border-2 transition-all">Standard</div>
+            <div class="text-right">
+                <span class="block text-[10px] text-slate-400 font-black uppercase leading-none mb-1">Lead Player</span>
+                <span id="lead-name" class="text-lg font-black text-slate-800 uppercase leading-none">-</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-area">
+        <div id="battlefield" class="w-[700px] h-[400px] rounded-[200px] border-2 border-dashed flex items-center justify-center gap-8 relative transition-colors duration-500 bf-standard">
+            <div class="absolute inset-0 flex items-center justify-center opacity-[0.02] pointer-events-none">
+                <span class="text-9xl font-black text-blue-900 -rotate-12">WAR ZONE</span>
+            </div>
+        </div>
+        <div id="seats-container"></div>
+    </div>
+
+    <div id="user-info" class="user-dashboard">
+        <div class="stat-v-panel">
+            <div id="u-score" class="stat-score">0</div>
+            <div id="u-trick" class="stat-win">0/0</div>
+        </div>
+        <div class="flex flex-col overflow-hidden">
+            <span class="text-[10px] font-black text-slate-400 uppercase leading-none mb-1">Player</span>
+            <span class="text-lg font-black text-slate-900 leading-none truncate">YOU</span>
+        </div>
+    </div>
+
+    <div id="bid-panel" class="hidden fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[200] p-12 rounded-[40px] flex flex-col items-center gap-8 animate-in fade-in zoom-in duration-300">
+        <div class="text-center">
+            <h2 class="text-slate-900 font-black text-4xl mb-2">TARGET WIN</h2>
+            <p class="text-slate-400 font-bold uppercase tracking-widest">ROUND <span id="bid-round">1</span></p>
+        </div>
+        <div class="flex gap-4 items-center">
+            <input type="number" id="bid-input" min="0" value="0" class="w-28 text-center text-5xl font-black bg-slate-50 border-2 border-slate-200 rounded-3xl py-4 text-slate-900 outline-none focus:border-blue-500 shadow-inner">
+            <button id="bid-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-10 py-5 rounded-3xl font-black text-2xl shadow-xl active:scale-95 transition-all">OK</button>
+        </div>
+    </div>
+
+    <div class="hand-area">
+        <div id="user-hand" class="flex justify-center gap-2 items-end"></div>
+    </div>
+
+    <script>
+        const REVERSE_VALS = [11, 22, 33];
+        let state = {
+            round: 1, trick: 1, deck: [],
+            players: [
+                { id: 0, name: "YOU", hand: [], score: 0, bid: 0, wins: 0 },
+                { id: 1, name: "AI 1", hand: [], score: 0, bid: 0, wins: 0 },
+                { id: 2, name: "AI 2", hand: [], score: 0, bid: 0, wins: 0 },
+                { id: 3, name: "AI 3", hand: [], score: 0, bid: 0, wins: 0 },
+                { id: 4, name: "AI 4", hand: [], score: 0, bid: 0, wins: 0 }
+            ],
+            currentLead: 0, turnOrder: [], playedCards: [], phase: 'BIDDING'
+        };
+
+        function init() { startRound(); }
+
+        function createDeck() {
+            let d = [];
+            for(let i=1; i<=39; i++) d.push({type:'NUM', val:i});
+            for(let i=0; i<5; i++) d.push({type:'ZERO', val:0});
+            d.push({type:'DEATH', val:99});
+            for(let i=d.length-1; i>0; i--){
+                const j = Math.floor(Math.random()*(i+1));
+                [d[i], d[j]] = [d[j], d[i]];
+            }
+            return d;
+        }
+
+        function startRound() {
+            state.phase = 'BIDDING';
+            state.trick = 1;
+            state.playedCards = [];
+            state.deck = createDeck();
+            state.players.forEach(p => {
+                p.hand = []; p.wins = 0;
+                for(let i=0; i<state.round; i++) p.hand.push(state.deck.pop());
+                p.hand.sort((a,b)=>a.val-b.val);
+                p.bid = Math.floor(Math.random()*(state.round/2 + 1));
+            });
+            setTurnOrder(state.currentLead);
+            renderUI();
+        }
+
+        function setTurnOrder(l) {
+            state.turnOrder = [];
+            for(let i=0; i<5; i++) state.turnOrder.push((l+i)%5);
+        }
+
+        function submitBid() {
+            const v = parseInt(document.getElementById('bid-input').value);
+            if(isNaN(v) || v<0 || v>state.round) return;
+            state.players[0].bid = v;
+            state.phase = 'PLAYING';
+            processNextTurn();
+        }
+
+        function processNextTurn() {
+            renderUI();
+            if(state.phase !== 'PLAYING') return;
+            const pid = state.turnOrder[state.playedCards.length];
+            if(pid === undefined) return;
+            if(pid !== 0) setTimeout(() => aiPlay(pid), 1000);
+        }
+
+        function aiPlay(pid) {
+            playCard(pid, Math.floor(state.players[pid].hand.length * Math.random()));
+        }
+
+        function playCard(pid, idx) {
+            const p = state.players[pid];
+            const c = p.hand.splice(idx, 1)[0];
+            state.playedCards.push({pid, card:c});
+            if(state.playedCards.length === 5) {
+                renderUI();
+                setTimeout(resolveTrick, 1500);
+            } else processNextTurn();
+        }
+
+        function resolveTrick() {
+            let revs = state.playedCards.filter(x=>x.card.type==='NUM' && REVERSE_VALS.includes(x.card.val)).length;
+            let isRev = revs%2!==0;
+            let wid = -1;
+            const dth = state.playedCards.find(x=>x.card.type==='DEATH');
+            const zros = state.playedCards.filter(x=>x.card.type==='ZERO');
+            if(dth && zros.length>0) wid = zros[0].pid;
+            else if(dth) wid = dth.pid;
+            else {
+                let srt = [...state.playedCards].sort((a,b)=> isRev? a.card.val-b.card.val : b.card.val-a.card.val);
+                wid = (zros.length>1 && srt[0].card.type==='ZERO') ? zros[0].pid : srt[0].pid;
+            }
+            state.players[wid].wins++;
+            state.currentLead = wid;
+            state.trick++;
+            state.playedCards = [];
+            if(state.trick > state.round) setTimeout(resolveRound, 1200);
+            else { setTurnOrder(wid); processNextTurn(); }
+        }
+
+        function resolveRound() {
+            state.players.forEach(p => {
+                let diff = Math.abs(p.bid-p.wins);
+                p.score += (p.bid===0) ? (diff===0? state.round:-state.round) : (diff===0? p.bid*2:-diff*2);
+            });
+            if(state.round >= 9) { state.phase='END'; renderUI(); }
+            else { state.round++; startRound(); }
+        }
+
+        function disp(c) { return c.type==='DEATH'?'☠️':(c.type==='ZERO'?'0':c.val); }
+
+        function renderUI() {
+            document.getElementById('cur-round').textContent = `ROUND ${state.round} / 9`;
+            document.getElementById('lead-name').textContent = state.players[state.currentLead].name;
+            
+            let revs = state.playedCards.filter(x=>x.card.type==='NUM' && REVERSE_VALS.includes(x.card.val)).length;
+            const isRev = revs%2!==0;
+            const ri = document.getElementById('rev-indicator');
+            const bf = document.getElementById('battlefield');
+            
+            ri.textContent = isRev ? 'REVERSE MODE' : 'STANDARD MODE';
+            ri.style.borderColor = isRev ? '#4f46e5' : '#cbd5e1';
+            ri.style.color = isRev ? '#4f46e5' : '#94a3b8';
+            
+            if(isRev) {
+                bf.classList.remove('bf-standard');
+                bf.classList.add('bf-reverse');
+            } else {
+                bf.classList.remove('bf-reverse');
+                bf.classList.add('bf-standard');
+            }
+
+            bf.innerHTML = '';
+            state.playedCards.forEach((pc, i) => {
+                const el = createCardUI(pc.card, 'field');
+                const wrap = document.createElement('div');
+                wrap.className = 'flex flex-col items-center gap-3 animate-in zoom-in duration-300';
+                wrap.innerHTML = `<span class="text-xs font-black text-slate-800 uppercase tracking-tighter">${state.players[pc.pid].name}</span>`;
+                wrap.appendChild(el);
+                bf.appendChild(wrap);
+            });
+
+            const sc = document.getElementById('seats-container');
+            sc.innerHTML = '';
+            state.players.forEach((p, i) => {
+                if(i === 0) return;
+                const seat = document.createElement('div');
+                const isCurrentTurn = (state.phase==='PLAYING' && state.turnOrder[state.playedCards.length] === p.id);
+                const hasPlayed = state.playedCards.some(pc => pc.pid === p.id);
+                
+                seat.className = `player-seat seat-${i} ${isCurrentTurn ? 'status-turn' : ''} ${hasPlayed ? 'status-played' : ''}`;
+                seat.innerHTML = `
+                    <div class="stat-v-panel">
+                        <div class="stat-score">${p.score}</div>
+                        <div class="stat-win">${p.wins}/${p.bid}</div>
+                    </div>
+                    <div class="char-node">
+                        <span>${p.name}</span>
+                    </div>
+                `;
+                sc.appendChild(seat);
+            });
+
+            const u = state.players[0];
+            document.getElementById('u-score').textContent = u.score;
+            document.getElementById('u-trick').textContent = `${u.wins}/${u.bid}`;
+            const isUTurn = (state.phase==='PLAYING' && state.turnOrder[state.playedCards.length] === 0);
+            const uInfo = document.getElementById('user-info');
+            uInfo.style.borderColor = isUTurn ? '#facc15' : (state.playedCards.some(pc => pc.pid === 0) ? '#4ade80' : '#1e293b');
+
+            const hc = document.getElementById('user-hand');
+            hc.innerHTML = '';
+            state.players[0].hand.forEach((c, idx) => {
+                const el = createCardUI(c, 'hand');
+                const isMyTurn = (state.phase==='PLAYING' && state.turnOrder[state.playedCards.length] === 0);
+                if(!isMyTurn || state.phase === 'BIDDING') el.classList.add('disabled');
+                else el.onclick = () => playCard(0, idx);
+                hc.appendChild(el);
+            });
+
+            document.getElementById('bid-panel').classList.toggle('hidden', state.phase !== 'BIDDING');
+            document.getElementById('bid-round').textContent = state.round;
+        }
+
+        function createCardUI(c, mode) {
+            const d = document.createElement('div');
+            let t = 'c-num';
+            if(c.입력==='DEATH') t='c-death';
+            else if(c.입력==='ZERO') t='c-zero';
+            else if(REVERSE_VALS.includes(c.val)) t='c-rev';
+            d.className = `card ${t} ${mode === 'hand' ? 'c-hand' : 'c-field'}`;
+            d.textContent = disp(c);
+            return d;
+        }
+
+        document.getElementById('bid-btn').onclick = submitBid;
+        window.onload = init;
+    </script>
+</body>
+</html>
