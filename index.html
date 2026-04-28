@@ -113,12 +113,11 @@
 
         .card.disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(0.5); }
 
-        /* 사용자 대시보드 (고정 위치 및 너비) */
         .user-dashboard {
             position: fixed;
             bottom: 25px;
             left: 25px;
-            width: 180px; /* 고정 너비 설정 */
+            width: 180px; 
             background: white;
             border: 3px solid #1e293b;
             border-radius: 20px;
@@ -130,7 +129,7 @@
             z-index: 100;
         }
 
-        #bid-panel {
+        #bid-panel, #result-panel {
             background: white;
             border: 4px solid #1e293b;
             box-shadow: 0 40px 80px rgba(0,0,0,0.3);
@@ -139,7 +138,6 @@
         .bf-standard { background-color: rgba(255, 255, 255, 0.4); border-color: rgba(203, 213, 225, 0.5); }
         .bf-reverse { background-color: rgba(236, 252, 203, 0.6); border-color: rgba(129, 140, 248, 0.8); }
 
-        /* 핸드 영역: 배너 우측 여백 확보 */
         .hand-area {
             position: fixed;
             bottom: 0;
@@ -151,8 +149,41 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            padding-left: 210px; /* 배너 너비 + 간격만큼 여백 */
+            padding-left: 210px; 
             z-index: 50;
+        }
+
+        /* 기록 패널 (좌측 하단) */
+        .info-tracker {
+            position: absolute;
+            bottom: 20px;
+            left: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 5;
+        }
+        .tracker-item {
+            font-size: 11px;
+            font-weight: 900;
+            padding: 4px 12px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            border: 1px solid;
+            width: fit-content;
+        }
+        .rev-theme { 
+            color: #4f46e5; 
+            background: rgba(238, 242, 255, 0.9); 
+            border-color: #c7d2fe; 
+        }
+        .zero-theme { 
+            color: #475569; 
+            background: rgba(241, 245, 249, 0.9); 
+            border-color: #cbd5e1; 
         }
     </style>
 </head>
@@ -178,6 +209,18 @@
         <div id="battlefield" class="w-[700px] h-[400px] rounded-[200px] border-2 border-dashed flex items-center justify-center gap-8 relative transition-colors duration-500 bf-standard">
             <div class="absolute inset-0 flex items-center justify-center opacity-[0.02] pointer-events-none">
                 <span class="text-9xl font-black text-blue-900 -rotate-12">WAR ZONE</span>
+            </div>
+            
+            <!-- 리버스 및 제로 트래커 -->
+            <div class="info-tracker">
+                <div id="rev-tracker" class="tracker-item rev-theme hidden">
+                    <span class="opacity-50">REV:</span>
+                    <span id="rev-list">-</span>
+                </div>
+                <div id="zero-tracker" class="tracker-item zero-theme hidden">
+                    <span class="opacity-50">ZERO COUNT:</span>
+                    <span id="zero-count">0</span>
+                </div>
             </div>
         </div>
         <div id="seats-container"></div>
@@ -205,6 +248,15 @@
         </div>
     </div>
 
+    <div id="result-panel" class="hidden fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[300] p-10 rounded-[40px] flex flex-col items-center gap-6 min-w-[400px] animate-in zoom-in">
+        <div class="text-center">
+            <h2 class="text-slate-900 font-black text-4xl mb-1 italic">GAME OVER</h2>
+            <p class="text-slate-400 font-bold uppercase tracking-widest text-sm">Final Rankings</p>
+        </div>
+        <div id="rank-list" class="w-full flex flex-col gap-2"></div>
+        <button id="restart-btn" class="mt-4 bg-slate-900 hover:bg-black text-white px-12 py-4 rounded-2xl font-black text-xl shadow-lg transition-all">PLAY AGAIN</button>
+    </div>
+
     <div class="hand-area">
         <div id="user-hand" class="flex justify-center gap-2 items-end"></div>
     </div>
@@ -220,10 +272,19 @@
                 { id: 3, name: "AI 3", hand: [], score: 0, bid: 0, wins: 0 },
                 { id: 4, name: "AI 4", hand: [], score: 0, bid: 0, wins: 0 }
             ],
-            currentLead: 0, turnOrder: [], playedCards: [], phase: 'BIDDING'
+            currentLead: 0, turnOrder: [], playedCards: [], phase: 'BIDDING',
+            roundReverses: [], 
+            roundZeroCount: 0 
         };
 
-        function init() { startRound(); }
+        function init() { resetGame(); }
+
+        function resetGame() {
+            state.round = 1;
+            state.players.forEach(p => { p.score = 0; p.wins = 0; p.bid = 0; });
+            document.getElementById('result-panel').classList.add('hidden');
+            startRound();
+        }
 
         function createDeck() {
             let d = [];
@@ -241,12 +302,20 @@
             state.phase = 'BIDDING';
             state.trick = 1;
             state.playedCards = [];
+            state.roundReverses = [];
+            state.roundZeroCount = 0;
             state.deck = createDeck();
+            
             state.players.forEach(p => {
                 p.hand = []; p.wins = 0;
                 for(let i=0; i<state.round; i++) p.hand.push(state.deck.pop());
                 p.hand.sort((a,b)=>a.val-b.val);
-                p.bid = Math.floor(Math.random()*(state.round/2 + 1));
+                
+                if(p.id !== 0) {
+                    // AI 승수 예측 로직: 데스 카드 또는 35 이상 카드 개수
+                    let predictedWins = p.hand.filter(c => c.type === 'DEATH' || (c.type === 'NUM' && c.val >= 35)).length;
+                    p.bid = Math.min(state.round, predictedWins);
+                }
             });
             setTurnOrder(state.currentLead);
             renderUI();
@@ -280,6 +349,14 @@
         function playCard(pid, idx) {
             const p = state.players[pid];
             const c = p.hand.splice(idx, 1)[0];
+            
+            if(c.type === 'NUM' && REVERSE_VALS.includes(c.val)) {
+                state.roundReverses.push(c.val);
+            }
+            if(c.type === 'ZERO') {
+                state.roundZeroCount++;
+            }
+
             state.playedCards.push({pid, card:c});
             if(state.playedCards.length === 5) {
                 renderUI();
@@ -289,20 +366,24 @@
 
         function resolveTrick() {
             let revs = state.playedCards.filter(x=>x.card.type==='NUM' && REVERSE_VALS.includes(x.card.val)).length;
-            let isRev = revs%2!==0;
+            let isRev = revs % 2 !== 0; 
+            
             let wid = -1;
             const dth = state.playedCards.find(x=>x.card.type==='DEATH');
             const zros = state.playedCards.filter(x=>x.card.type==='ZERO');
-            if(dth && zros.length>0) wid = zros[0].pid;
+            
+            if(dth && zros.length > 0) wid = zros[0].pid;
             else if(dth) wid = dth.pid;
             else {
-                let srt = [...state.playedCards].sort((a,b)=> isRev? a.card.val-b.card.val : b.card.val-a.card.val);
-                wid = (zros.length>1 && srt[0].card.type==='ZERO') ? zros[0].pid : srt[0].pid;
+                let srt = [...state.playedCards].sort((a,b)=> isRev ? a.card.val-b.card.val : b.card.val-a.card.val);
+                wid = (zros.length > 1 && srt[0].card.type==='ZERO') ? zros[0].pid : srt[0].pid;
             }
+            
             state.players[wid].wins++;
             state.currentLead = wid;
             state.trick++;
             state.playedCards = [];
+            
             if(state.trick > state.round) setTimeout(resolveRound, 1200);
             else { setTurnOrder(wid); processNextTurn(); }
         }
@@ -310,20 +391,62 @@
         function resolveRound() {
             state.players.forEach(p => {
                 let diff = Math.abs(p.bid-p.wins);
-                p.score += (p.bid===0) ? (diff===0? state.round:-state.round) : (diff===0? p.bid*2:-diff*2);
+                p.score += (p.bid===0) ? (diff===0 ? state.round : -state.round) : (diff===0 ? p.bid*2 : -diff*2);
             });
-            if(state.round >= 9) { state.phase='END'; renderUI(); }
+            if(state.round >= 9) { 
+                state.phase='END'; 
+                renderUI();
+                showFinalResults();
+            }
             else { state.round++; startRound(); }
         }
 
-        function disp(c) { return c.type==='DEATH'?'☠️':(c.type==='ZERO'?'0':c.val); }
+        function showFinalResults() {
+            const sorted = [...state.players].sort((a, b) => b.score - a.score);
+            const list = document.getElementById('rank-list');
+            list.innerHTML = '';
+            sorted.forEach((p, idx) => {
+                const item = document.createElement('div');
+                item.className = `flex items-center justify-between p-3 rounded-xl border-2 ${p.id === 0 ? 'bg-blue-50 border-blue-200' : 'bg-slate-50 border-slate-100'}`;
+                item.innerHTML = `
+                    <div class="flex items-center gap-4">
+                        <span class="w-6 h-6 flex items-center justify-center bg-slate-900 text-white rounded-full text-[10px] font-black">${idx + 1}</span>
+                        <span class="font-black text-slate-800">${p.name}</span>
+                    </div>
+                    <span class="font-black text-blue-600 text-xl">${p.score}</span>
+                `;
+                list.appendChild(item);
+            });
+            document.getElementById('result-panel').classList.remove('hidden');
+        }
+
+        function disp(c) { return c.type==='DEATH' ? '☠️' : (c.type==='ZERO' ? '0' : c.val); }
 
         function renderUI() {
             document.getElementById('cur-round').textContent = `ROUND ${state.round} / 9`;
             document.getElementById('lead-name').textContent = state.players[state.currentLead].name;
             
-            let revs = state.playedCards.filter(x=>x.card.type==='NUM' && REVERSE_VALS.includes(x.card.val)).length;
-            const isRev = revs%2!==0;
+            // 트래커 데이터 업데이트
+            const rt = document.getElementById('rev-tracker');
+            const rl = document.getElementById('rev-list');
+            if(state.roundReverses.length > 0) {
+                rt.classList.remove('hidden');
+                rl.textContent = state.roundReverses.join(', ');
+            } else {
+                rt.classList.add('hidden');
+            }
+
+            const zt = document.getElementById('zero-tracker');
+            const zc = document.getElementById('zero-count');
+            if(state.roundZeroCount > 0) {
+                zt.classList.remove('hidden');
+                zc.textContent = state.roundZeroCount;
+            } else {
+                zt.classList.add('hidden');
+            }
+
+            let currentTrickRevs = state.playedCards.filter(x=>x.card.type==='NUM' && REVERSE_VALS.includes(x.card.val)).length;
+            const isRev = currentTrickRevs % 2 !== 0;
             const ri = document.getElementById('rev-indicator');
             const bf = document.getElementById('battlefield');
             
@@ -332,18 +455,16 @@
             ri.style.color = isRev ? '#4f46e5' : '#94a3b8';
             
             if(isRev) {
-                bf.classList.remove('bf-standard');
-                bf.classList.add('bf-reverse');
+                bf.classList.remove('bf-standard'); bf.classList.add('bf-reverse');
             } else {
-                bf.classList.remove('bf-reverse');
-                bf.classList.add('bf-standard');
+                bf.classList.remove('bf-reverse'); bf.classList.add('bf-standard');
             }
 
-            bf.innerHTML = '';
+            bf.querySelectorAll('.card-wrap').forEach(el => el.remove());
             state.playedCards.forEach((pc, i) => {
                 const el = createCardUI(pc.card, 'field');
                 const wrap = document.createElement('div');
-                wrap.className = 'flex flex-col items-center gap-3 animate-in zoom-in duration-300';
+                wrap.className = 'card-wrap flex flex-col items-center gap-3 animate-in zoom-in duration-300';
                 wrap.innerHTML = `<span class="text-xs font-black text-slate-800 uppercase tracking-tighter">${state.players[pc.pid].name}</span>`;
                 wrap.appendChild(el);
                 bf.appendChild(wrap);
@@ -356,16 +477,13 @@
                 const seat = document.createElement('div');
                 const isCurrentTurn = (state.phase==='PLAYING' && state.turnOrder[state.playedCards.length] === p.id);
                 const hasPlayed = state.playedCards.some(pc => pc.pid === p.id);
-                
                 seat.className = `player-seat seat-${i} ${isCurrentTurn ? 'status-turn' : ''} ${hasPlayed ? 'status-played' : ''}`;
                 seat.innerHTML = `
                     <div class="stat-v-panel">
                         <div class="stat-score">${p.score}</div>
                         <div class="stat-win">${p.wins}/${p.bid}</div>
                     </div>
-                    <div class="char-node">
-                        <span>${p.name}</span>
-                    </div>
+                    <div class="char-node"><span>${p.name}</span></div>
                 `;
                 sc.appendChild(seat);
             });
@@ -403,6 +521,7 @@
         }
 
         document.getElementById('bid-btn').onclick = submitBid;
+        document.getElementById('restart-btn').onclick = resetGame;
         window.onload = init;
     </script>
 </body>
